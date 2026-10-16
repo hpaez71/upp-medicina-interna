@@ -1,0 +1,20 @@
+# Publica la carpeta docs/ en Firebase Hosting (https://proyecto-upp-244d7.web.app)
+# cada vez que se sube un cambio a la rama main. Requiere el secreto FIREBASE_SERVICE_ACCOUNT.
+name: Publicar en Firebase Hosting
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: proyecto-upp-244d7
