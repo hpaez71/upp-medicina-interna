@@ -1,0 +1,16 @@
+{
+  "name": "UPP Medicina Interna · UMB",
+  "short_name": "UPP UMB",
+  "description": "Recolección y análisis del estudio de úlceras por presión en medicina interna.",
+  "lang": "es-CO",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f4f9",
+  "theme_color": "#4a2f68",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
