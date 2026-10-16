@@ -1,0 +1,73 @@
+rules_version = '2';
+// Reglas de seguridad del Instrumento UPP · Medicina Interna (UMB).
+// Acceso: solo correos con un documento en /acceso/{correo}. Rol "asesor" o "recolector".
+// Antes del primer uso, cree a mano en la consola de Firestore el documento
+//   acceso/<su-correo-en-minusculas>  con los campos  rol: "asesor"  y  prefijo: "A1".
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function correo() { return request.auth.token.email.lower(); }
+    function accPath() { return /databases/$(database)/documents/acceso/$(correo()); }
+    function member() { return signedIn() && exists(accPath()); }
+    function acc() { return get(accPath()).data; }
+    function asesor() { return member() && acc().rol == 'asesor'; }
+    function estado(d) { return d.revision.estado; }
+
+    // Lista de correos autorizados: la leen los miembros y solo la cambian los asesores.
+    match /acceso/{email} {
+      allow read: if member();
+      allow create, update: if asesor()
+        && request.resource.data.rol in ['asesor', 'recolector']
+        && request.resource.data.prefijo is string
+        && request.resource.data.prefijo.matches('[AE][0-9]');
+      // Un asesor no puede quitarse su propio acceso (evita dejar el proyecto sin asesores).
+      allow delete: if asesor() && email != correo();
+    }
+
+    // Perfil visible de cada integrante (nombre y foto de Google). Cada persona escribe solo el suyo.
+    match /equipo/{uid} {
+      allow read: if member();
+      allow write: if member() && request.auth.uid == uid
+        && request.resource.data.rol == acc().rol
+        && request.resource.data.prefijo == acc().prefijo;
+    }
+
+    // Parámetros del proyecto (meta de muestra, periodo).
+    match /config/{docId} {
+      allow read: if member();
+      allow write: if asesor();
+    }
+
+    // Registros de pacientes (solo códigos, sin datos de identificación).
+    match /registros/{id} {
+      allow read: if member();
+
+      // Crear: el código debe llevar el prefijo de quien registra, con consentimiento y en estado pendiente.
+      // Los asesores también pueden crear (por ejemplo, al restaurar un respaldo).
+      allow create: if (asesor() && request.resource.data.v.consentimiento == 1) || (member()
+        && request.resource.data.autor == request.auth.uid
+        && request.resource.data.prefijo == acc().prefijo
+        && id.matches('MI-' + acc().prefijo + '-[0-9]{3,}')
+        && request.resource.data.v.consentimiento == 1
+        && estado(request.resource.data) == 'pendiente');
+
+      // Editar: los asesores pueden todo (incluida la revisión).
+      // El autor puede corregir su registro sin cambiar el autor ni aprobarlo:
+      // el estado se mantiene, o pasa de "corregir" a "pendiente" al reenviarlo.
+      allow update: if asesor() || (
+        member()
+        && resource.data.autor == request.auth.uid
+        && request.resource.data.autor == resource.data.autor
+        && request.resource.data.v.consentimiento == 1
+        && (estado(request.resource.data) == estado(resource.data)
+            || (estado(resource.data) == 'corregir' && estado(request.resource.data) == 'pendiente'))
+      );
+
+      // Borrar: asesores, o el autor mientras el registro no esté aprobado.
+      allow delete: if asesor() || (member() && resource.data.autor == request.auth.uid && estado(resource.data) != 'aprobado');
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -1,0 +1,5 @@
+node_modules/
+.firebase/
+*.log
+respaldo_*.json
+upp_medicina_interna_*.csv
