@@ -18,6 +18,7 @@ const clone = o => JSON.parse(JSON.stringify(o));
 const L = a => a.map((l, i) => [i + 1, l]);
 const YN = [[1, "Sí"], [0, "No"]];
 const PROC = [[1, "Sí"], [0, "No"], [9, "No registrado"]];
+const PROC_NA = [[1, "Sí"], [0, "No"], [9, "No registrado"], [8, "No aplica"]];
 const LIK = [[1, "1"], [2, "2"], [3, "3"], [4, "4"], [5, "5"]];
 const LIK_L = ["Totalmente en desacuerdo", "En desacuerdo", "Ni de acuerdo ni en desacuerdo", "De acuerdo", "Totalmente de acuerdo"];
 
@@ -56,7 +57,12 @@ const BRADEN = [
 const SECTIONS = [
  { k: "A", id: "ident", t: "Identificación y elegibilidad", p: "Sin datos que identifiquen a la persona. El registro solo se guarda con consentimiento informado.", f: [
   { id: "codigo", l: "Código del participante", type: "text", req: 1, ro: 1, hint: "Se asigna con su prefijo de recolector." },
-  { id: "fecha_aplicacion", l: "Fecha de aplicación", type: "date", req: 1 },
+  { id: "servicio", l: "Servicio", type: "text", req: 1, hint: "Servicio donde se encuentra el paciente." },
+  { id: "unidad", l: "Unidad específica", type: "text", hint: "Por ejemplo: piso 4, unidad de hospitalización B." },
+  { id: "fecha_aplicacion", l: "Fecha de la primera evaluación", type: "date", req: 1 },
+  { id: "fecha_seg1", l: "Fecha de seguimiento 1", type: "date" },
+  { id: "fecha_seg2", l: "Fecha de seguimiento 2", type: "date" },
+  { id: "fecha_seg3", l: "Fecha de seguimiento 3", type: "date" },
   { id: "consentimiento", l: "Consentimiento informado firmado", type: "radio", o: YN, req: 1 },
   { id: "crit_edad", l: "Edad ≥ 18 años", type: "radio", o: YN },
   { id: "crit_estancia", l: "Hospitalizado ≥ 48 h en medicina interna", type: "radio", o: YN },
@@ -73,7 +79,13 @@ const SECTIONS = [
   { id: "ocupacion", l: "Ocupación principal", type: "select", o: L(["Empleado", "Independiente", "Labores del hogar", "Pensionado", "Desempleado", "Estudiante"]) },
   { id: "etnia", l: "Pertenencia étnica", type: "select", o: L(["Ninguna", "Indígena", "Negro, afrocolombiano", "Raizal", "Palenquero", "Rrom"]) },
   { id: "convivencia", l: "Con quién vive", type: "select", o: L(["Solo(a)", "Pareja", "Familia", "Hogar geriátrico o institución"]) },
-  { id: "cuidador", l: "Cuenta con cuidador durante la hospitalización", type: "radio", o: YN }
+  { id: "cuidador", l: "Cuenta con cuidador durante la hospitalización", type: "radio", o: YN },
+  { id: "funcionalidad", l: "¿Qué grado de ayuda necesitaba el paciente para realizar actividades como bañarse, vestirse, alimentarse, ir al baño y movilizarse?", type: "radio", wide: 1,
+    o: L(["Independiente: realiza las actividades sin ayuda", "Dependencia parcial: necesita ayuda para algunas actividades", "Dependencia total: requiere ayuda para todas o casi todas las actividades"]) },
+  { id: "ayuda_tecnica", l: "¿Qué dispositivo utilizaba habitualmente el paciente para desplazarse?", type: "radio", wide: 1,
+    o: L(["No utiliza ayudas técnicas", "Bastón", "Caminador", "Silla de ruedas", "Otra ayuda técnica", "No caminaba antes de la hospitalización"]) },
+  { id: "movilidad_previa", l: "¿El paciente presentaba dificultades para movilizarse o permanecía durante períodos prolongados en cama o silla?", type: "radio", wide: 1,
+    o: L(["No: se movilizaba habitualmente sin limitaciones importantes", "Sí, temporal: presentó limitación de movilidad por una condición reciente", "Sí, prolongada: presentaba movilidad reducida o permanecía en cama o silla durante períodos prolongados"]) }
  ] },
  { k: "C", id: "clin", t: "Antecedentes y condición clínica", p: "Datos de la historia clínica al momento de la aplicación.", f: [
   { id: "fecha_ingreso", l: "Fecha de ingreso al servicio", type: "date" },
@@ -82,11 +94,15 @@ const SECTIONS = [
   { id: "peso_kg", l: "Peso", unit: "kg", type: "num", min: 20, max: 300, step: "0.1" },
   { id: "talla_cm", l: "Talla", unit: "cm", type: "num", min: 100, max: 220 },
   { id: "imc", l: "Índice de masa corporal", type: "calc", unit: "kg/m²" },
-  { id: "albumina", l: "Albúmina sérica", unit: "g/dL", type: "num", min: 0.5, max: 6, step: "0.1" },
-  { id: "hemoglobina", l: "Hemoglobina", unit: "g/dL", type: "num", min: 2, max: 22, step: "0.1" },
   { id: "incontinencia", l: "Incontinencia", type: "select", o: L(["Ninguna", "Urinaria", "Fecal", "Mixta"]) },
   { id: "sedacion", l: "Recibe sedantes u opioides", type: "radio", o: YN },
-  { id: "comorb", l: "Comorbilidades", type: "multi", wide: 1, o: L(["Diabetes mellitus", "Hipertensión arterial", "Enfermedad renal crónica", "EPOC", "Insuficiencia cardíaca", "ACV o secuela neurológica", "Cáncer", "Deterioro cognitivo o demencia", "Enfermedad arterial periférica"]) },
+  { id: "lim_movilidad", l: "¿El paciente presenta algún grado de limitación de la movilidad física?", type: "radio", wide: 1, o: [[1, "Sí"], [0, "No"], [9, "No es posible determinarlo"]] },
+  { id: "causa_limitacion", l: "¿Cuál es la principal causa de la limitación de la movilidad del paciente?", type: "radio", wide: 1, dep: "limmov",
+    o: L(["Enfermedad o condición neurológica", "Dolor", "Debilidad física", "Enfermedad musculoesquelética", "Indicación de reposo o restricción médica", "Estado posquirúrgico", "Deterioro cognitivo", "Otra", "No se puede determinar"]) },
+  { id: "ayuda_posicion", l: "¿Qué nivel de ayuda necesita el paciente para cambiar de posición en la cama?", type: "radio", wide: 1, o: L(["No necesita ayuda", "Necesita ayuda parcial", "Necesita ayuda total"]) },
+  { id: "upp_previa", l: "¿El paciente tiene antecedentes de úlceras por presión previas a la hospitalización actual?", type: "radio", wide: 1, o: [[1, "Sí"], [0, "No"], [9, "No se conoce"]] },
+  { id: "comorb", l: "Comorbilidades", type: "multi", wide: 1, o: L(["Diabetes mellitus", "Hipertensión arterial", "Enfermedad renal crónica", "EPOC", "Insuficiencia cardíaca", "ACV o secuela neurológica", "Cáncer", "Deterioro cognitivo o demencia", "Enfermedad arterial periférica", "Otra"]) },
+  { id: "comorb_otra", l: "¿Cuál otra comorbilidad?", type: "text", wide: 1, dep: "comorbotra", hint: "Escriba la comorbilidad." },
   { id: "disp", l: "Dispositivos médicos", type: "multi", wide: 1, o: L(["Sonda vesical", "Sonda nasogástrica", "Oxígeno por cánula o máscara", "Ventilación no invasiva", "Catéter venoso", "Collar, férula o yeso"]) },
   { id: "upp_presente", l: "Presenta úlcera por presión al momento de la valoración", type: "radio", o: YN, wide: 1, req: 1 },
   { id: "upp_origen", l: "Origen de la lesión", type: "radio", o: L(["Presente al ingreso", "Adquirida en la hospitalización"]), dep: "upp" },
@@ -95,7 +111,7 @@ const SECTIONS = [
   { id: "upp_loc", l: "Localización", type: "multi", wide: 1, dep: "upp", o: L(["Sacro o coxis", "Talones", "Trocánteres", "Isquion", "Occipital", "Codos", "Otra"]) }
  ] },
  { k: "D", id: "braden", t: "Escala de Braden", p: "Seleccione un nivel en cada una de las seis subescalas. El puntaje y el nivel de riesgo se calculan solos.", braden: 1 },
- { k: "E", id: "proc", t: "Procesos de atención para la prevención", p: "Verifique en la historia clínica y por observación durante las últimas 24 h. «No registrado» cuenta como no cumplido en el índice.", q: [
+ { k: "E", id: "proc", t: "Procesos de atención para la prevención", p: "Verifique en la historia clínica y por observación durante las últimas 24 h. «No registrado» cuenta como no cumplido en el índice; «No aplica» no entra en el cálculo.", q: [
   ["p_valoracion", "Valoración del riesgo con Braden registrada en las primeras 24 h del ingreso", "Valoración Braden al ingreso"],
   ["p_revaloracion", "Revaloración del riesgo registrada en las últimas 72 h", "Revaloración en 72 h"],
   ["p_cambios", "Cambios de posición registrados cada 2 a 4 horas", "Cambios de posición"],
@@ -106,7 +122,11 @@ const SECTIONS = [
   ["p_talones", "Alivio de presión en talones y prominencias óseas", "Alivio de talones"],
   ["p_cabecera", "Cabecera a 30° o menos cuando la condición clínica lo permite", "Cabecera ≤ 30°"],
   ["p_nutricion", "Valoración o soporte nutricional documentado", "Soporte nutricional"],
-  ["p_educacion", "Educación al paciente o la familia sobre prevención de lesiones por presión", "Educación"]
+  ["p_educacion", "Educación al paciente o la familia sobre prevención de lesiones por presión", "Educación"],
+  ["p_piel_ingreso", "¿Se encuentra documentada la valoración de la integridad de la piel al ingreso del paciente al servicio?", "Piel valorada al ingreso", PROC_NA],
+  ["p_plan_cuidados", "¿Se encuentra documentado un plan de cuidados para prevenir las UPP, acorde con las necesidades y el riesgo del paciente?", "Plan de cuidados documentado"],
+  ["p_asistencia_mov", "¿Se encuentra documentada la asistencia proporcionada al paciente para realizar cambios de posición o movilizarse, según sus necesidades?", "Asistencia para movilizarse", PROC_NA],
+  ["p_acciones_piel", "Cuando se identifican alteraciones en la piel, ¿se documentan las acciones realizadas por el personal de salud?", "Acciones ante alteraciones", PROC_NA]
  ], qopts: PROC, extra: [{ id: "idx_procesos", l: "Índice de cumplimiento de procesos", type: "calc", unit: "%" }] },
  { k: "F", id: "perc", t: "Percepción del paciente sobre el cuidado", p: "Lea cada afirmación. 1 = totalmente en desacuerdo, 5 = totalmente de acuerdo.", pre: [
   { id: "responde", l: "Quién responde", type: "radio", o: L(["Paciente", "Cuidador o familiar", "No es posible obtener respuesta"]), wide: 1 }
@@ -143,7 +163,7 @@ function allFields() {
       out.push({ id: "braden_total", l: "Braden · puntaje total", type: "calc", unit: "6 a 23", sec: s.k });
       out.push({ id: "braden_riesgo", l: "Braden · nivel de riesgo", type: "calc", o: RISK.map(r => [r.code, r.l]), sec: s.k });
     }
-    (s.q || []).forEach(q => out.push({ id: q[0], l: q[1], short: q[2], type: "radio", o: s.qopts, sec: s.k }));
+    (s.q || []).forEach(q => out.push({ id: q[0], l: q[1], short: q[2], type: "radio", o: q[3] || s.qopts, sec: s.k }));
     (s.extra || []).forEach(f => out.push({ ...f, sec: s.k }));
   });
   return out;
@@ -155,8 +175,10 @@ const DERIVED = [
  { id: "grupo_edad", l: "Grupo de edad", o: L(["18 a 44 años", "45 a 64 años", "65 a 79 años", "80 años o más"]), ord: 1 },
  { id: "estancia_cat", l: "Estancia agrupada", o: L(["2 a 7 días", "8 a 14 días", "Más de 14 días"]), ord: 1 },
  { id: "imc_cat", l: "Estado nutricional (IMC, OMS)", o: L(["Bajo peso (< 18,5)", "Normal (18,5–24,9)", "Sobrepeso (25–29,9)", "Obesidad (≥ 30)"]), ord: 1 },
- { id: "hipoalb", l: "Hipoalbuminemia (< 3,5 g/dL)", o: YN },
- { id: "anemia", l: "Anemia (Hb < 12 mujeres, < 13 hombres)", o: YN },
+ { id: "dep_funcional", l: "Dependencia funcional (parcial o total)", o: YN },
+ { id: "lim_mov_bin", l: "Limitación de la movilidad física (sí frente a no)", o: YN },
+ { id: "ayuda_posicion_bin", l: "Necesita ayuda para cambiar de posición (parcial o total)", o: YN },
+ { id: "upp_previa_bin", l: "Antecedente de UPP previa (sí frente a no)", o: YN },
  { id: "n_comorb", l: "Número de comorbilidades", num: 1 },
  { id: "n_disp", l: "Número de dispositivos médicos", num: 1 },
  { id: "riesgo3", l: "Riesgo Braden agrupado", o: L(["Alto o muy alto (≤ 12)", "Moderado (13–14)", "Bajo o sin riesgo (≥ 15)"]), ord: 1 },
@@ -166,7 +188,7 @@ const DERIVED = [
  { id: "proc_cat", l: "Cumplimiento de procesos", o: L(["Bajo (< 50 %)", "Medio (50–79 %)", "Alto (≥ 80 %)"]), ord: 1 },
  { id: "upp_hosp", l: "UPP adquirida en la hospitalización (excluye presentes al ingreso)", o: YN }
 ];
-const ORD = new Set(["escolaridad", "estrato", "braden_riesgo", ...BRADEN.map(b => b.id), ...PERC_IDS]);
+const ORD = new Set(["escolaridad", "estrato", "braden_riesgo", "funcionalidad", "movilidad_previa", "ayuda_posicion", ...BRADEN.map(b => b.id), ...PERC_IDS]);
 const SKIP = new Set(["consentimiento", "crit_edad", "crit_estancia", "responde", "upp_origen", "upp_estadio", "upp_n"]);
 const VARS = {};
 FIELDS.forEach(f => {
@@ -190,7 +212,7 @@ function compute(v) {
   out._bp = S.sum(bs); out._bn = bs.length;
   out.imc = v.peso_kg && v.talla_cm ? round(v.peso_kg / (v.talla_cm / 100) ** 2, 1) : null;
   if (v.fecha_ingreso && v.fecha_aplicacion) { const d = (Date.parse(v.fecha_aplicacion) - Date.parse(v.fecha_ingreso)) / 864e5; out.dias_estancia = Number.isFinite(d) ? Math.round(d) : null; } else out.dias_estancia = null;
-  const pr = PROC_IDS.map(id => v[id]).filter(x => x != null);
+  const pr = PROC_IDS.map(id => v[id]).filter(x => x != null && x !== 8);
   out.idx_procesos = pr.length ? round(pr.filter(x => x === 1).length / pr.length * 100, 1) : null;
   const pcv = v.responde === 3 ? [] : PERC_IDS.map(id => v[id]).filter(x => x != null);
   out.percepcion_media = pcv.length ? round(S.mean(pcv), 2) : null;
@@ -205,8 +227,11 @@ function derive(v) {
   d.grupo_edad = e == null ? null : e < 45 ? 1 : e < 65 ? 2 : e < 80 ? 3 : 4;
   d.estancia_cat = ds == null || ds < 0 ? null : ds <= 7 ? 1 : ds <= 14 ? 2 : 3;
   d.imc_cat = v.imc == null ? null : v.imc < 18.5 ? 1 : v.imc < 25 ? 2 : v.imc < 30 ? 3 : 4;
-  d.hipoalb = v.albumina == null ? null : v.albumina < 3.5 ? 1 : 0;
-  d.anemia = v.hemoglobina == null || v.sexo == null || v.sexo === 3 ? null : v.hemoglobina < (v.sexo === 1 ? 13 : 12) ? 1 : 0;
+  d.dep_funcional = v.funcionalidad == null ? null : v.funcionalidad >= 2 ? 1 : 0;
+  d.lim_mov_bin = v.lim_movilidad === 1 ? 1 : v.lim_movilidad === 0 ? 0 : null;
+  d.ayuda_posicion_bin = v.ayuda_posicion == null ? null : v.ayuda_posicion >= 2 ? 1 : 0;
+  d.upp_previa_bin = v.upp_previa === 1 ? 1 : v.upp_previa === 0 ? 0 : null;
+  if (v.lim_movilidad !== 1) d.causa_limitacion = null;
   d.n_comorb = (v.comorb || []).length; d.n_disp = (v.disp || []).length;
   d.riesgo3 = bt == null ? null : bt <= 12 ? 1 : bt <= 14 ? 2 : 3;
   d.en_riesgo = bt == null ? null : bt <= 18 ? 1 : 0; d.riesgo_alto = bt == null ? null : bt <= 12 ? 1 : 0;
@@ -220,8 +245,13 @@ function quality(v) {
   if (v.crit_edad === 0 || v.crit_estancia === 0) a.push("No cumple un criterio de inclusión");
   if (v.edad != null && v.edad > 100) a.push(`Edad de ${v.edad} años`);
   if (v.imc != null && (v.imc < 13 || v.imc > 60)) a.push(`IMC de ${nf(v.imc)} fuera de rango; revise peso y talla`);
-  if (v.albumina != null && (v.albumina < 1 || v.albumina > 5.5)) a.push(`Albúmina de ${nf(v.albumina)} g/dL`);
-  if (v.hemoglobina != null && (v.hemoglobina < 4 || v.hemoglobina > 20)) a.push(`Hemoglobina de ${nf(v.hemoglobina)} g/dL`);
+  if (!v.unidad) a.push("Sin unidad específica");
+  const segs = [v.fecha_seg1, v.fecha_seg2, v.fecha_seg3];
+  segs.forEach((f, i) => { if (f && v.fecha_aplicacion && f < v.fecha_aplicacion) a.push(`Seguimiento ${i + 1} anterior a la primera evaluación`); });
+  if (v.fecha_seg1 && v.fecha_seg2 && v.fecha_seg2 < v.fecha_seg1) a.push("Seguimiento 2 anterior al seguimiento 1");
+  if (v.fecha_seg2 && v.fecha_seg3 && v.fecha_seg3 < v.fecha_seg2) a.push("Seguimiento 3 anterior al seguimiento 2");
+  if (v.lim_movilidad === 1 && v.causa_limitacion == null) a.push("Limitación de la movilidad sin causa registrada");
+  if ((v.comorb || []).includes(10) && !v.comorb_otra) a.push("Comorbilidad «Otra» sin especificar");
   if (v.dias_estancia != null && v.dias_estancia < 2) a.push(`Estancia de ${v.dias_estancia} día(s), menor de 48 h`);
   if (!v.fecha_ingreso) a.push("Sin fecha de ingreso");
   if (v.upp_presente === 1 && !v.upp_estadio) a.push("UPP sin estadio");
@@ -266,7 +296,7 @@ function bradenHTML() {
     <div class="bopts${b.o.length === 3 ? " three" : ""}">${b.o.map((o, i) => `<label class="bopt"><input type="radio" name="${b.id}" id="${b.id}-${i + 1}" value="${i + 1}"><span class="n">${i + 1}</span><span class="t"><b>${esc(o[0])}</b><small>${esc(o[1])}</small></span></label>`).join("")}</div></fieldset>`).join("");
 }
 function qHTML(s) {
-  return `<div class="grid-q" id="q-${s.id}">${s.q.map(([id, t], i) => `<div class="qrow" role="group" aria-labelledby="lb-${id}"><div class="qt" id="lb-${id}"><small>${s.k}${i + 1}</small>${esc(t)}</div><div class="pills${s.likert ? " likert" : ""}">${s.qopts.map(([v, l]) => `<label><input type="radio" name="${id}" id="${id}-${v}" value="${v}"><span>${esc(l)}</span></label>`).join("")}</div></div>`).join("")}</div>`;
+  return `<div class="grid-q" id="q-${s.id}">${s.q.map(([id, t, , qo], i) => `<div class="qrow" role="group" aria-labelledby="lb-${id}"><div class="qt" id="lb-${id}"><small>${s.k}${i + 1}</small>${esc(t)}</div><div class="pills${s.likert ? " likert" : ""}">${(qo || s.qopts).map(([v, l]) => `<label><input type="radio" name="${id}" id="${id}-${v}" value="${v}"><span>${esc(l)}</span></label>`).join("")}</div></div>`).join("")}</div>`;
 }
 function renderForm() {
   $("sections").innerHTML = SECTIONS.map(s => {
@@ -311,6 +341,8 @@ function refreshForm() {
   $("idx_procesos").textContent = v.idx_procesos == null ? "—" : nf(v.idx_procesos, 1) + " %";
   $("percepcion_media").textContent = nf(v.percepcion_media, 2);
   document.querySelectorAll('[data-dep="upp"]').forEach(el => el.classList.toggle("disabled", v.upp_presente !== 1));
+  document.querySelectorAll('[data-dep="limmov"]').forEach(el => el.classList.toggle("disabled", v.lim_movilidad !== 1));
+  document.querySelectorAll('[data-dep="comorbotra"]').forEach(el => { el.hidden = !(v.comorb || []).includes(10); });
   $("q-perc").classList.toggle("disabled", v.responde === 3);
 }
 function formMsg(text, kind, actions) {
@@ -328,7 +360,8 @@ function validate(v) {
   if (v.dias_estancia != null && v.dias_estancia < 0) return "La fecha de ingreso es posterior a la fecha de aplicación. Corrija las fechas.";
   const errs = [];
   if (!v.codigo) errs.push("código");
-  if (!v.fecha_aplicacion) errs.push("fecha de aplicación");
+  if (!v.servicio) errs.push("servicio");
+  if (!v.fecha_aplicacion) errs.push("fecha de la primera evaluación");
   if (v.edad == null) errs.push("edad"); if (v.sexo == null) errs.push("sexo");
   if (v.upp_presente == null) errs.push("presencia de UPP (sección C)");
   if (v._bn < 6) errs.push(`escala Braden (${6 - v._bn} subescala${6 - v._bn > 1 ? "s" : ""} sin responder)`);
@@ -371,7 +404,7 @@ function newRecord() {
   ST.editing = null; frm().reset();
   let draft = null; try { draft = JSON.parse(localStorage.getItem(DRAFT) || "null"); } catch (e) { }
   if (draft && Object.values(draft).some(x => x != null && x !== "" && !(Array.isArray(x) && !x.length))) { fill(draft); formMsg("Se recuperó un borrador que no se había guardado.", ""); } else formMsg("");
-  $("codigo").value = nextCode(); if (!$("fecha_aplicacion").value) $("fecha_aplicacion").value = today();
+  $("codigo").value = nextCode(); if (!$("fecha_aplicacion").value) $("fecha_aplicacion").value = today(); if (!$("servicio").value) $("servicio").value = "Medicina interna";
   $("editInfo").textContent = ""; $("btnSave").textContent = "Guardar registro"; refreshForm(); setFormEnabled(true);
 }
 function setFormEnabled(on) { frm().querySelectorAll("input,select,textarea").forEach(el => { if (el.id !== "codigo") el.disabled = !on; }); $("btnSave").disabled = !on; }
@@ -555,11 +588,21 @@ function demoRecords() {
     v.fecha_aplicacion = dApp.toISOString().slice(0, 10); v.fecha_ingreso = new Date(dApp.getTime() - stay * 864e5).toISOString().slice(0, 10);
     v.dx_principal = ["J18.9", "N39.0", "I50.9", "E11.9", "J44.1", "A41.9"][Math.floor(R() * 6)];
     v.talla_cm = Math.round(160 + 8 * G()); v.peso_kg = round(cl(64 - 4 * f + 12 * G(), 35, 140), 1);
-    v.albumina = round(cl(3.4 - 0.3 * f + 0.5 * G(), 1.5, 5), 1); v.hemoglobina = round(cl(11.5 + 1.8 * G(), 6, 17), 1);
+    v.servicio = "Medicina interna"; v.unidad = ["Piso 3 - Unidad A", "Piso 3 - Unidad B", "Piso 4 - Unidad A"][Math.floor(R() * 3)];
+    if (R() < 0.7) v.fecha_seg1 = new Date(dApp.getTime() + 3 * 864e5).toISOString().slice(0, 10);
+    if (v.fecha_seg1 && R() < 0.5) v.fecha_seg2 = new Date(dApp.getTime() + 7 * 864e5).toISOString().slice(0, 10);
+    v.funcionalidad = cl(Math.round(1.7 + 0.7 * f + 0.4 * G()), 1, 3);
+    v.ayuda_tecnica = f > 1.2 ? pick([1, .5, 1, 2, .3, 2]) : pick([7, 1.5, 1, .4, .2, .2]);
+    v.movilidad_previa = cl(Math.round(1.5 + 0.6 * f + 0.5 * G()), 1, 3);
+    v.lim_movilidad = R() < 0.06 ? 9 : (f + 0.5 * G() > 0 ? 1 : 0);
+    if (v.lim_movilidad === 1) v.causa_limitacion = pick([2, 1.5, 3, 1, 1.5, .6, .8, .3, .2]);
+    v.ayuda_posicion = cl(Math.round(1.6 + 0.7 * f + 0.4 * G()), 1, 3);
+    v.upp_previa = R() < 0.08 ? 9 : (R() < 0.1 + 0.08 * Math.max(0, f) ? 1 : 0);
     v.incontinencia = f > 0.8 ? pick([2, 2, 1, 2]) : pick([6, 1.5, .5, .5]); v.sedacion = R() < 0.18 ? 1 : 0;
-    v.comorb = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((c, j) => R() < [0.32, 0.55, 0.18, 0.15, 0.2, 0.12, 0.1, 0.08 + 0.1 * (f > 1), 0.07][j]);
+    v.comorb = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter((c, j) => R() < [0.32, 0.55, 0.18, 0.15, 0.2, 0.12, 0.1, 0.08 + 0.1 * (f > 1), 0.07, 0.05][j]); if (v.comorb.includes(10)) v.comorb_otra = ["Hipotiroidismo", "VIH", "Cirrosis hepática"][Math.floor(R() * 3)];
     v.disp = [1, 2, 3, 4, 5, 6].filter((c, j) => R() < [0.25 + 0.2 * (f > 0.5), 0.1 + 0.1 * (f > 1), 0.35, 0.05, 0.9, 0.04][j]);
-    PROC_IDS.forEach((id, j) => { const p = lg(0.3 + 0.9 * qz + [0.6, -0.3, 0, -0.4, 0.5, 0.2, 0.4, -0.2, 0.3, -0.5, -0.8][j]); v[id] = R() < p ? 1 : R() < 0.35 ? 9 : 0; });
+    PROC_IDS.forEach((id, j) => { const p = lg(0.3 + 0.9 * qz + [0.6, -0.3, 0, -0.4, 0.5, 0.2, 0.4, -0.2, 0.3, -0.5, -0.8, 0.4, -0.2, 0, 0.1][j]); v[id] = R() < p ? 1 : R() < 0.35 ? 9 : 0; });
+    if (v.ayuda_posicion === 1 && R() < 0.6) v.p_asistencia_mov = 8; if (R() < 0.5) v.p_acciones_piel = 8;
     v.responde = pick([85, 10, 5]);
     if (v.responde !== 3) PERC_IDS.forEach((id, j) => v[id] = cl(Math.round(3.4 + 0.7 * qz + 0.12 * (v.b_movilidad - 2.7) + [0, -.2, -.1, -.3, .3, -.2, -.6, .4][j] + 0.8 * G()), 1, 5));
     v.dolor_apoyo = cl(Math.round(3 + 1.5 * f + 2 * G()), 0, 10);
@@ -687,8 +730,8 @@ function corBlock(rows, xid, yid) {
 
 /* =================== PANELES =================== */
 function panelOE1(rows) {
-  const socio = ["edad", "grupo_edad", "sexo", "estado_civil", "escolaridad", "estrato", "zona", "regimen", "ocupacion", "etnia", "convivencia", "cuidador"];
-  const clin = ["dias_estancia", "estancia_cat", "imc", "imc_cat", "albumina", "hipoalb", "hemoglobina", "anemia", "incontinencia", "sedacion", "n_comorb", ...VARS_OF("comorb"), "n_disp", ...VARS_OF("disp"), "dolor_apoyo"];
+  const socio = ["edad", "grupo_edad", "sexo", "estado_civil", "escolaridad", "estrato", "zona", "regimen", "ocupacion", "etnia", "convivencia", "cuidador", "funcionalidad", "ayuda_tecnica", "movilidad_previa"];
+  const clin = ["dias_estancia", "estancia_cat", "imc", "imc_cat", "incontinencia", "sedacion", "lim_movilidad", "causa_limitacion", "ayuda_posicion", "upp_previa", "n_comorb", ...VARS_OF("comorb"), "n_disp", ...VARS_OF("disp"), "dolor_apoyo"];
   const tbl = list => list.map(id => { const V = VARS[id];
     if (V.kind === "num") { const dn = descNum(colv(rows, id)); return `<tr><td>${esc(V.l)}${V.unit ? ` (${esc(V.unit)})` : ""}, ${dn.how}</td><td class="n">${dn.d.n}</td><td class="n" colspan="2">${dn.txt}</td><td class="n">${dn.test}: ${fp(dn.np)}</td></tr>`; }
     if (V.kind === "bin" && V.grp) { const fr = freq(rows, id), it = fr.items[0]; return `<tr><td style="padding-left:24px">${esc(V.l.split(": ")[1])}</td><td class="n">${it.k}</td><td class="n">${pc(it.p)}</td><td class="n">${pc(it.lo)}–${pc(it.hi)}</td><td></td></tr>`; }
@@ -707,6 +750,9 @@ function panelOE1(rows) {
   <div class="grid2">${card("Sexo", "", hb("sexo"))}${card("Estrato socioeconómico", "", hb("estrato"))}</div>
   <div class="grid2">${card("Régimen de afiliación", "", hb("regimen", { sort: 1 }))}${card("Nivel educativo", "", hb("escolaridad"))}</div>
   <div class="grid2">${card("Comorbilidades", "Porcentaje de pacientes con cada condición (un paciente puede tener varias).", multi("comorb"))}${card("Dispositivos médicos", "Porcentaje de pacientes con cada dispositivo.", multi("disp"))}</div>
+  <div class="grid2">${card("Grado de dependencia para actividades básicas", "", hb("funcionalidad"))}${card("Dispositivo habitual para desplazarse", "", hb("ayuda_tecnica", { sort: 1 }))}</div>
+  <div class="grid2">${card("Limitación de la movilidad antes de la hospitalización", "", hb("movilidad_previa"))}${card("Ayuda para cambiar de posición en la cama", "", hb("ayuda_posicion"))}</div>
+  <div class="grid2">${card("Limitación actual de la movilidad física", "", hb("lim_movilidad"))}${card("Causa principal de la limitación", "Solo pacientes con limitación de la movilidad.", hb("causa_limitacion", { sort: 1 }))}</div>
   <div class="grid2">${card("Estado nutricional por IMC", "", hb("imc_cat"))}${card("Incontinencia", "", hb("incontinencia"))}</div>
   ${card("Tabla 1. Características sociodemográficas y clínicas", "Copie esta tabla al informe. Los porcentajes se calculan sobre los casos con dato.", `<div class="tw"><table>${head}<tbody>${groupHdr("Sociodemográficas")}${tbl(socio)}${groupHdr("Clínicas")}${tbl(clin)}</tbody></table></div>`)}`;
 }
@@ -754,7 +800,7 @@ function panelOE3(rows) {
   const parts = it => it.cnt.map((k, j) => ({ v: k, color: `--lk${j + 1}`, name: LIK_L[j], ink: j === 0 || j === 4 ? "--on-dark" : "--ink" }));
   const alpha = S.cronbach(resp.map(r => PERC_IDS.map(id => r[id])));
   const pm = colv(rows, "percepcion_media"), dpm = descNum(pm), pcat = freq(rows, "percep_cat");
-  const procItems = PROC_Q.map(([id, t, s]) => { const v = rows.map(r => r[id]).filter(x => x != null); return { id, s, n: v.length, si: v.filter(x => x === 1).length, no: v.filter(x => x === 0).length, nr: v.filter(x => x === 9).length }; });
+  const procItems = PROC_Q.map(([id, t, s]) => { const v = rows.map(r => r[id]).filter(x => x != null); return { id, s, n: v.length, si: v.filter(x => x === 1).length, no: v.filter(x => x === 0).length, nr: v.filter(x => x === 9).length, na: v.filter(x => x === 8).length }; });
   const ip = colv(rows, "idx_procesos"), dip = descNum(ip);
   const best = [...items].filter(i => i.v.length).sort((a, b) => b.d.mean - a.d.mean), worst = best[best.length - 1];
   const narr = resp.length ? `Respondieron ${resp.length} personas (${fr.items[0].k} pacientes y ${fr.items[1].k} cuidadores); en ${fr.items[2].k} casos no fue posible obtener respuesta. La percepción media fue <b>${dpm.txt}</b> (${dpm.how}, escala 1–5) y fue favorable (≥ 3,5) en el <b>${pc(pcat.items[2].p)}</b>. El aspecto mejor valorado fue «${esc(best[0].s.toLowerCase())}» (media ${nf(best[0].d.mean, 2)}) y el peor, «${esc(worst.s.toLowerCase())}» (media ${nf(worst.d.mean, 2)}).${alpha ? ` La consistencia interna de la escala fue ${alphaWord(alpha.alpha)} (α de Cronbach = ${nf(alpha.alpha, 3)}; ${alpha.n} casos completos).` : ""}` : "";
@@ -767,7 +813,7 @@ function panelOE3(rows) {
     ${card("Confiabilidad de la escala", "Alfa de Cronbach con la correlación ítem-total corregida y el alfa si se elimina el ítem. Se espera α ≥ 0,70 y correlaciones ítem-total ≥ 0,30.", alpha ? `<div class="tw"><table><thead><tr><th>Ítem</th><th class="n">r ítem-total</th><th class="n">α si se elimina</th></tr></thead><tbody>${alpha.items.map((it, j) => `<tr><td>${PERC_IDS[j].toUpperCase()} ${esc(PERC_Q[j][2])}</td><td class="n${it.rit < 0.3 ? " sig" : ""}">${nf(it.rit, 3)}</td><td class="n${it.alphaDel > alpha.alpha ? " sig" : ""}">${nf(it.alphaDel, 3)}</td></tr>`).join("")}</tbody></table></div><div class="narr">α = ${nf(alpha.alpha, 3)} con ${alpha.k} ítems y ${alpha.n} casos completos: consistencia ${alphaWord(alpha.alpha)}. ${alpha.items.some(it => it.alphaDel > alpha.alpha) ? "Algún ítem resaltado sube el alfa al eliminarlo; revise su redacción en la prueba piloto." : "Ningún ítem mejora el alfa al eliminarlo."}</div>` : C.empty("Se necesitan al menos 3 casos con los 8 ítems respondidos."))}</div>
   <div class="grid2">${card("Puntaje medio de percepción", "", ch(el => C.hist(el, pm, { min: 1, max: 5, bins: 8, normal: pm.length > 2 ? { mean: S.mean(pm), sd: S.sd(pm) } : null, xLabel: "Percepción media (1–5)", xName: "Percepción", label: "Percepción media" })))}
     ${card("Percepción categorizada", "", ch(el => C.hbar(el, pcat.items.map((it, j) => ({ label: it.l, value: it.p * 100, n: it.k, color: ["--lk1", "--lk3", "--lk5"][j] })), { label: "Percepción categorizada" })))}</div>
-  ${card("Cumplimiento de los procesos de atención", "Porcentaje de pacientes con cada acción preventiva verificada (Sí). «No registrado» se cuenta como no cumplido.", ch(el => C.stack(el, procItems.map(p => ({ label: p.s, parts: [{ v: p.si, color: "--c1", name: "Sí", ink: "--on-dark" }, { v: p.no, color: "--lk2", name: "No", ink: "--ink" }, { v: p.nr, color: "--lk3", name: "No registrado", ink: "--ink" }] })), { label: "Procesos de atención" })) + C.legend([{ color: "--c1", label: "Sí" }, { color: "--lk2", label: "No" }, { color: "--lk3", label: "No registrado" }]))}`;
+  ${card("Cumplimiento de los procesos de atención", "Porcentaje de pacientes con cada acción preventiva verificada (Sí). «No registrado» se cuenta como no cumplido y «No aplica» queda fuera del índice.", ch(el => C.stack(el, procItems.map(p => ({ label: p.s, parts: [{ v: p.si, color: "--c1", name: "Sí", ink: "--on-dark" }, { v: p.no, color: "--lk2", name: "No", ink: "--ink" }, { v: p.nr, color: "--lk3", name: "No registrado", ink: "--ink" }, { v: p.na, color: "--sunk", name: "No aplica", ink: "--ink" }] })), { label: "Procesos de atención" })) + C.legend([{ color: "--c1", label: "Sí" }, { color: "--lk2", label: "No" }, { color: "--lk3", label: "No registrado" }, { color: "--sunk", label: "No aplica" }]))}`;
 }
 
 function panelOE4(rows) {
@@ -789,7 +835,7 @@ function panelOE4(rows) {
 function panelOG(rows) {
   const up = has(rows, "upp_presente"), kU = up.filter(r => r.upp_presente === 1).length, prev = S.wilson(kU, up.length);
   const hb = has(rows, "upp_hosp"), kH = hb.filter(r => r.upp_hosp === 1).length, ph = S.wilson(kH, hb.length);
-  const cand = ["edad", "grupo_edad", "sexo", "estrato", "regimen", "cuidador", "dias_estancia", "estancia_cat", "imc", "imc_cat", "albumina", "hipoalb", "hemoglobina", "anemia", "incontinencia", "sedacion", "n_comorb", ...VARS_OF("comorb"), "n_disp", ...VARS_OF("disp"), "braden_total", ...BRADEN.map(b => b.id), "riesgo3", "riesgo_alto", "idx_procesos", "proc_cat", ...PROC_IDS, "percepcion_media", "percep_cat", "dolor_apoyo"];
+  const cand = ["edad", "grupo_edad", "sexo", "estrato", "regimen", "cuidador", "dias_estancia", "estancia_cat", "imc", "imc_cat", "funcionalidad", "dep_funcional", "ayuda_tecnica", "movilidad_previa", "incontinencia", "sedacion", "lim_mov_bin", "ayuda_posicion", "ayuda_posicion_bin", "upp_previa_bin", "n_comorb", ...VARS_OF("comorb"), "n_disp", ...VARS_OF("disp"), "braden_total", ...BRADEN.map(b => b.id), "riesgo3", "riesgo_alto", "idx_procesos", "proc_cat", ...PROC_IDS, "percepcion_media", "percep_cat", "dolor_apoyo"];
   const res = cand.map(id => { const r = up.filter(x => x[id] != null); const k = r.filter(x => x.upp_presente === 1).length;
     if (r.length < 5 || k === 0 || k === r.length) return { id, p: null, n: r.length };
     let out; const V = VARS[id];
@@ -802,7 +848,7 @@ function panelOG(rows) {
   }).sort((a, b) => (a.p ?? 2) - (b.p ?? 2));
   const tbl = `<div class="tw"><table><thead><tr><th>Factor</th><th class="n">n</th><th>Prueba</th><th class="n">Con UPP frente a sin UPP</th><th class="n">p</th><th></th></tr></thead><tbody>${res.map(r => `<tr><td>${esc(VARS[r.id].l)}</td><td class="n">${r.n}</td><td>${r.test || "—"}</td><td class="n">${r.extra || "—"}</td><td class="n">${pTag(r.p)}</td><td>${r.p != null && r.p < 0.2 ? `<span class="tag">candidato</span>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
   /* modelo logístico */
-  const pool = [...new Set(["braden_total", "percepcion_media", "idx_procesos", "edad", "dias_estancia", "albumina", "hemoglobina", "imc", "n_comorb", "n_disp", "dolor_apoyo", ...BRADEN.map(b => b.id), "sexo_bin", "riesgo_alto", "hipoalb", "anemia", "sedacion", "cuidador", ...VARS_OF("comorb"), ...VARS_OF("disp")])].filter(id => VARS[id] || id === "sexo_bin");
+  const pool = [...new Set(["braden_total", "percepcion_media", "idx_procesos", "edad", "dias_estancia", "imc", "n_comorb", "n_disp", "dolor_apoyo", ...BRADEN.map(b => b.id), "sexo_bin", "riesgo_alto", "dep_funcional", "lim_mov_bin", "ayuda_posicion_bin", "upp_previa_bin", "sedacion", "cuidador", ...VARS_OF("comorb"), ...VARS_OF("disp")])].filter(id => VARS[id] || id === "sexo_bin");
   const sel = ST.logit.filter(id => pool.includes(id));
   const lr = up.map(r => ({ ...r, sexo_bin: r.sexo === 2 ? 1 : r.sexo === 1 ? 0 : null }));
   const cc = lr.filter(r => sel.every(id => r[id] != null && Number.isFinite(r[id])));
@@ -827,7 +873,7 @@ function panelOG(rows) {
 }
 
 function panelNorm(rows) {
-  const vars = ["edad", "dias_estancia", "imc", "albumina", "hemoglobina", "braden_total", "idx_procesos", "percepcion_media", "dolor_apoyo", "n_comorb"];
+  const vars = ["edad", "dias_estancia", "imc", "braden_total", "idx_procesos", "percepcion_media", "dolor_apoyo", "n_comorb"];
   const grps = ST.normGrp === "upp" ? [["Con UPP", rows.filter(r => r.upp_presente === 1)], ["Sin UPP", rows.filter(r => r.upp_presente === 0)]] : [["Todos", rows]];
   const trs = vars.flatMap(id => grps.map(([g, rs]) => { const v = colv(rs, id), d = S.describe(v), nm = S.normality(v);
     const dec = nm.normal == null ? "—" : nm.normal ? `<span class="tag ok">Normal</span>` : `<span class="tag warn">No normal</span>`;
