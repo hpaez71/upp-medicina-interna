@@ -104,7 +104,9 @@ const SECTIONS = [
   { id: "comorb", l: "Comorbilidades", type: "multi", wide: 1, o: L(["Diabetes mellitus", "Hipertensión arterial", "Enfermedad renal crónica", "EPOC", "Insuficiencia cardíaca", "ACV o secuela neurológica", "Cáncer", "Deterioro cognitivo o demencia", "Enfermedad arterial periférica", "Otra"]) },
   { id: "comorb_otra", l: "¿Cuál otra comorbilidad?", type: "text", wide: 1, dep: "comorbotra", hint: "Escriba la comorbilidad." },
   { id: "disp", l: "Dispositivos médicos", type: "multi", wide: 1, o: L(["Sonda vesical", "Sonda nasogástrica", "Oxígeno por cánula o máscara", "Ventilación no invasiva", "Catéter venoso", "Collar, férula o yeso"]) },
-  { id: "upp_presente", l: "Presenta úlcera por presión al momento de la valoración", type: "radio", o: YN, wide: 1, req: 1 },
+  { id: "lesion_presente", l: "¿Presenta alguna lesión de piel relacionada con la dependencia al momento de la valoración?", type: "radio", o: YN, wide: 1, req: 1 },
+  { id: "lesion_tipo", l: "Tipo de lesión según su causa (marco GNEAUPP de lesiones relacionadas con la dependencia)", type: "multi", wide: 1, dep: "lesion", req: 1, o: L(["Presión o presión-cizalla", "Presión relacionada con dispositivo médico", "Humedad (incluye dermatitis asociada a incontinencia)", "Roce o fricción", "Combinada (presión-humedad, presión-fricción o humedad-fricción)", "Multifactorial", "Desgarro cutáneo"]) },
+  { id: "upp_presente", l: "Úlcera por presión (desenlace del estudio)", type: "calc", o: YN, hint: "Se calcula: sí cuando la lesión es por presión o presión-cizalla, o por dispositivo médico." },
   { id: "upp_origen", l: "Origen de la lesión", type: "radio", o: L(["Presente al ingreso", "Adquirida en la hospitalización"]), dep: "upp" },
   { id: "upp_estadio", l: "Estadio más avanzado (NPIAP)", type: "select", o: L(["Estadio 1", "Estadio 2", "Estadio 3", "Estadio 4", "No estadificable", "Lesión de tejidos profundos", "Relacionada con dispositivo médico"]), dep: "upp" },
   { id: "upp_n", l: "Número de lesiones", type: "num", min: 1, max: 20, dep: "upp" },
@@ -186,6 +188,8 @@ const DERIVED = [
  { id: "riesgo_alto", l: "Riesgo alto o muy alto (≤ 12)", o: YN },
  { id: "percep_cat", l: "Percepción categorizada", o: L(["Desfavorable (< 2,5)", "Intermedia (2,5–3,49)", "Favorable (≥ 3,5)"]), ord: 1 },
  { id: "proc_cat", l: "Cumplimiento de procesos", o: L(["Bajo (< 50 %)", "Medio (50–79 %)", "Alto (≥ 80 %)"]), ord: 1 },
+ { id: "lrd_presente", l: "Cualquier lesión relacionada con la dependencia", o: YN },
+ { id: "lrd_otra", l: "Lesión de la dependencia distinta de la presión (humedad, fricción, combinada, multifactorial o desgarro)", o: YN },
  { id: "upp_hosp", l: "UPP adquirida en la hospitalización (excluye presentes al ingreso)", o: YN }
 ];
 const ORD = new Set(["escolaridad", "estrato", "braden_riesgo", "funcionalidad", "movilidad_previa", "ayuda_posicion", ...BRADEN.map(b => b.id), ...PERC_IDS]);
@@ -216,6 +220,10 @@ function compute(v) {
   out.idx_procesos = pr.length ? round(pr.filter(x => x === 1).length / pr.length * 100, 1) : null;
   const pcv = v.responde === 3 ? [] : PERC_IDS.map(id => v[id]).filter(x => x != null);
   out.percepcion_media = pcv.length ? round(S.mean(pcv), 2) : null;
+  /* Desenlace: solo lesión por presión/cizalla (incluye dispositivo). Registros anteriores sin esta pregunta conservan su valor. */
+  if (v.lesion_presente === 0) out.upp_presente = 0;
+  else if (v.lesion_presente === 1) { const t = v.lesion_tipo || []; out.upp_presente = t.length ? (t.includes(1) || t.includes(2) ? 1 : 0) : null; }
+  else out.upp_presente = v.upp_presente ?? null;
   return out;
 }
 function derive(v) {
@@ -237,6 +245,8 @@ function derive(v) {
   d.en_riesgo = bt == null ? null : bt <= 18 ? 1 : 0; d.riesgo_alto = bt == null ? null : bt <= 12 ? 1 : 0;
   d.percep_cat = pm == null ? null : pm < 2.5 ? 1 : pm < 3.5 ? 2 : 3;
   d.proc_cat = ip == null ? null : ip < 50 ? 1 : ip < 80 ? 2 : 3;
+  d.lrd_presente = v.lesion_presente ?? (v.upp_presente === 1 ? 1 : null);
+  d.lrd_otra = v.lesion_presente === 0 ? 0 : v.lesion_presente === 1 && (v.lesion_tipo || []).length ? ((v.lesion_tipo || []).some(c => c >= 3) ? 1 : 0) : null;
   d.upp_hosp = v.upp_presente === 0 ? 0 : v.upp_presente === 1 && v.upp_origen === 2 ? 1 : null;
   return d;
 }
@@ -254,6 +264,7 @@ function quality(v) {
   if ((v.comorb || []).includes(10) && !v.comorb_otra) a.push("Comorbilidad «Otra» sin especificar");
   if (v.dias_estancia != null && v.dias_estancia < 2) a.push(`Estancia de ${v.dias_estancia} día(s), menor de 48 h`);
   if (!v.fecha_ingreso) a.push("Sin fecha de ingreso");
+  if (v.lesion_presente == null && v.upp_presente != null) a.push("Registro anterior al ajuste: falta clasificar la lesión según su causa (GNEAUPP)");
   if (v.upp_presente === 1 && !v.upp_estadio) a.push("UPP sin estadio");
   if (v.upp_presente === 1 && !v.upp_origen) a.push("UPP sin origen (ingreso u hospitalización)");
   const mp = PROC_IDS.filter(id => v[id] == null).length; if (mp) a.push(`${mp} proceso(s) de atención sin responder`);
@@ -281,7 +292,7 @@ function fieldHTML(f) {
   if (f.type === "radio" || f.type === "multi") { const t = f.type === "radio" ? "radio" : "checkbox";
     return `<div class="${cls}"${dep} role="group" aria-labelledby="lb-${f.id}"><span class="lbl${rq}" id="lb-${f.id}">${labx}</span><div class="pills">${f.o.map(([v, l]) => `<label><input type="${t}" name="${f.id}" id="${f.id}-${v}" value="${v}"><span>${esc(l)}</span></label>`).join("")}</div></div>`; }
   if (f.type === "select") return `<div class="${cls}"${dep}><label class="${rq.trim()}" for="${f.id}">${labx}</label><select id="${f.id}" name="${f.id}"><option value="">Seleccione…</option>${f.o.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>`;
-  if (f.type === "calc") return `<div class="${cls}"${dep}><span class="lbl">${labx}</span><output class="calc" id="${f.id}">—</output></div>`;
+  if (f.type === "calc") return `<div class="${cls}"${dep}><span class="lbl">${labx}</span><output class="calc" id="${f.id}">—</output>${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ""}</div>`;
   if (f.type === "textarea") return `<div class="${cls}"${dep}><label for="${f.id}">${labx}</label><textarea id="${f.id}" name="${f.id}"></textarea></div>`;
   const it = f.type === "num" ? "number" : f.type;
   const ex = f.type === "num" ? ` inputmode="decimal"${f.min != null ? ` min="${f.min}"` : ""}${f.max != null ? ` max="${f.max}"` : ""} step="${f.step || 1}"` : "";
@@ -340,6 +351,8 @@ function refreshForm() {
   $("imc").textContent = nf(v.imc, 1); $("dias_estancia").textContent = v.dias_estancia == null ? "—" : String(v.dias_estancia);
   $("idx_procesos").textContent = v.idx_procesos == null ? "—" : nf(v.idx_procesos, 1) + " %";
   $("percepcion_media").textContent = nf(v.percepcion_media, 2);
+  $("upp_presente").textContent = v.upp_presente === 1 ? "Sí · lesión por presión" : v.upp_presente === 0 ? (v.lesion_presente === 1 ? "No · otra lesión de la dependencia" : "No") : "—";
+  document.querySelectorAll('[data-dep="lesion"]').forEach(el => el.classList.toggle("disabled", v.lesion_presente !== 1));
   document.querySelectorAll('[data-dep="upp"]').forEach(el => el.classList.toggle("disabled", v.upp_presente !== 1));
   document.querySelectorAll('[data-dep="limmov"]').forEach(el => el.classList.toggle("disabled", v.lim_movilidad !== 1));
   document.querySelectorAll('[data-dep="comorbotra"]').forEach(el => { el.hidden = !(v.comorb || []).includes(10); });
@@ -363,7 +376,8 @@ function validate(v) {
   if (!v.servicio) errs.push("servicio");
   if (!v.fecha_aplicacion) errs.push("fecha de la primera evaluación");
   if (v.edad == null) errs.push("edad"); if (v.sexo == null) errs.push("sexo");
-  if (v.upp_presente == null) errs.push("presencia de UPP (sección C)");
+  if (v.lesion_presente == null) errs.push("presencia de lesiones de piel (sección C)");
+  else if (v.lesion_presente === 1 && !(v.lesion_tipo || []).length) errs.push("tipo de lesión según su causa (sección C)");
   if (v._bn < 6) errs.push(`escala Braden (${6 - v._bn} subescala${6 - v._bn > 1 ? "s" : ""} sin responder)`);
   return errs.length ? "Falta completar: " + errs.join(", ") + "." : null;
 }
@@ -609,6 +623,9 @@ function demoRecords() {
     Object.assign(v, compute(v)); delete v._bp; delete v._bn;
     const pu = lg(-1.6 - 0.38 * (v.braden_total - 15) - 0.025 * (v.idx_procesos - 60) - 0.35 * ((v.percepcion_media || 3.3) - 3.3));
     v.upp_presente = R() < pu ? 1 : 0;
+    if (v.upp_presente) { v.lesion_presente = 1; v.lesion_tipo = [R() < 0.2 ? 2 : 1]; if (R() < 0.25) v.lesion_tipo.push([3, 4, 5][Math.floor(R() * 3)]); }
+    else if (R() < 0.14 + 0.06 * (v.incontinencia > 1)) { v.lesion_presente = 1; v.lesion_tipo = [pick([4, 2, 1.2, .5, 1])].map(k => [3, 4, 5, 6, 7][k - 1]); }
+    else v.lesion_presente = 0;
     if (v.upp_presente) { v.upp_origen = R() < 0.6 ? 2 : 1; v.upp_estadio = pick([4, 4, 1.5, .6, .6, .8, .8]); v.upp_n = R() < 0.75 ? 1 : 2; v.upp_loc = R() < 0.7 ? [1] : R() < 0.6 ? [2] : [1, 2]; }
     const pre = ["E1", "E2", "E3"][i % 3], id = `MI-${pre}-${String(Math.floor(i / 3) + 1).padStart(3, "0")}`; v.codigo = id;
     out.push({ id, v, autor: "demo-" + pre, prefijo: pre, creado: v.fecha_aplicacion, mod: v.fecha_aplicacion, rev: 1, revision: { estado: R() < 0.72 ? "aprobado" : R() < 0.7 ? "pendiente" : "corregir" } });
@@ -866,12 +883,23 @@ function panelOG(rows) {
   return `${objective("Objetivo general", "Asociación de los factores de riesgo de Braden, los procesos de atención y la percepción del cuidado con la ocurrencia de UPP", "Prevalencia, análisis bivariado de cada factor frente a la UPP y modelo de regresión logística con OR ajustados.")}
   ${minN(up, 50, "y pocos casos con UPP, el modelo multivariable no es estable")}
   <div class="kpis">${kpi("Prevalencia de UPP", pc(prev.p), `${kU} de ${up.length}; IC 95 % ${pc(prev.lo)}–${pc(prev.hi)}`)}${kpi("UPP adquirida en hospitalización", pc(ph.p), `${kH} de ${hb.length}; excluye las presentes al ingreso`)}${kpi("Factores con p < 0,05", res.filter(r => r.p != null && r.p < 0.05).length, `de ${res.filter(r => r.p != null).length} evaluados`)}</div>
+  ${lrdCard(rows)}
   <div class="grid2">${card("Braden según UPP", "", box("braden_total", "Puntaje Braden"))}${card("Percepción según UPP", "", box("percepcion_media", "Percepción media"))}</div>
   <div class="grid2">${card("Cumplimiento de procesos según UPP", "", box("idx_procesos", "Índice de procesos (%)"))}${card("Días de estancia según UPP", "", box("dias_estancia", "Días de estancia"))}</div>
   ${card("Análisis bivariado: cada factor frente a la presencia de UPP", "Ordenado por valor p. La prueba se elige sola según el tipo de variable y la normalidad. Los factores con p < 0,20 son candidatos al modelo multivariable.", tbl)}
   ${card("Regresión logística binaria", "Desenlace: UPP (sí = 1). Elija los predictores; se usan los casos con todos los datos. Para variables binarias, el OR compara la presencia frente a la ausencia del factor.", `<div class="checks" id="lgPick">${pool.map(id => `<label><input type="checkbox" value="${id}" ${sel.includes(id) ? "checked" : ""}>${esc(nameOf(id).length > 38 ? nameOf(id).slice(0, 37) + "…" : nameOf(id))}</label>`).join("")}</div><div style="margin-top:14px">${model}</div>`)}`;
 }
 
+function lrdCard(rows) {
+  const cl = rows.filter(r => r.lesion_presente != null), kL = cl.filter(r => r.lesion_presente === 1).length, wl = S.wilson(kL, cl.length);
+  const tipos = VARS_OF("lesion_tipo").map(id => { const v = cl.filter(r => r.lesion_presente === 1); const k = v.filter(r => r[id] === 1).length; return { label: VARS[id].l.split(": ")[1], value: cl.length ? k / cl.length * 100 : 0, n: k, color: id === "lesion_tipo_1" || id === "lesion_tipo_2" ? "--c-upp" : "--c1" }; });
+  const kU = cl.filter(r => r.upp_presente === 1).length, kO = cl.filter(r => r.lrd_otra === 1).length;
+  if (!cl.length) return card("Lesiones relacionadas con la dependencia", "", C.empty("Aún no hay registros con la clasificación de lesiones según su causa."));
+  return card("Lesiones relacionadas con la dependencia según su causa", "Marco del GNEAUPP. El desenlace del estudio son solo las lesiones por presión o presión-cizalla, incluidas las de dispositivo (en rojo); las demás se describen pero no cuentan como UPP. Un paciente puede tener lesiones de varios tipos.",
+    `<div class="kpis">${kpi("Cualquier lesión de la dependencia", pc(wl.p), `${kL} de ${cl.length}; IC 95 % ${pc(wl.lo)}–${pc(wl.hi)}`)}${kpi("Por presión (desenlace)", pc(cl.length ? kU / cl.length : NaN), `${kU} pacientes`)}${kpi("Otras lesiones de la dependencia", pc(cl.length ? kO / cl.length : NaN), `${kO} pacientes`)}</div>` +
+    ch(el => C.hbar(el, tipos, { label: "Tipos de lesión" })) +
+    `<div class="narr">De ${cl.length} pacientes clasificados, <b>${kL}</b> (${pc(wl.p)}) presentaron alguna lesión relacionada con la dependencia; <b>${kU}</b> correspondieron a lesión por presión, que es el desenlace analizado, y <b>${kO}</b> tuvieron lesiones de otra causa. ${kL ? `Las lesiones por presión representaron el ${pc(kU / kL)} de los pacientes con lesión.` : ""}</div>`);
+}
 function panelNorm(rows) {
   const vars = ["edad", "dias_estancia", "imc", "braden_total", "idx_procesos", "percepcion_media", "dolor_apoyo", "n_comorb"];
   const grps = ST.normGrp === "upp" ? [["Con UPP", rows.filter(r => r.upp_presente === 1)], ["Sin UPP", rows.filter(r => r.upp_presente === 0)]] : [["Todos", rows]];
